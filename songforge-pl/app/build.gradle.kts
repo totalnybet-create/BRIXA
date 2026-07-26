@@ -5,7 +5,7 @@ plugins {
 }
 android {
     namespace = "com.brixa.songforge"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.brixa.songforge"
         minSdk = 26
