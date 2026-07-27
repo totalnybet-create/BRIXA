@@ -1,0 +1,17 @@
+{
+  "name": "brixa",
+  "private": true,
+  "version": "0.1.0",
+  "description": "BRIXA AI-first design, marketing and workflow platform",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
