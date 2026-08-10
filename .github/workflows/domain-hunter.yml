@@ -1,0 +1,53 @@
+name: Domain Hunter AI
+
+on:
+  push:
+    branches:
+      - domain-hunter-agent
+    paths:
+      - 'domain-hunter/**'
+      - '.github/workflows/domain-hunter.yml'
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: 'Czas pracy w minutach'
+        required: false
+        default: '120'
+
+env:
+  HUNT_MINUTES: ${{ github.event.inputs.minutes || '120' }}
+  HUNT_MAX_UNIQUE: '2500'
+  HUNT_BRIEF: 'international affiliate deal and product comparison marketplace; short memorable premium brand, easy to pronounce in Polish and English'
+  OUTPUT_FORMAT: 'json'
+  MCP_PORT: '3000'
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 135
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Start Domain Search MCP
+        run: |
+          nohup npx -y domain-search-mcp@latest --http > domain-hunter/mcp.log 2>&1 &
+          echo $! > domain-hunter/mcp.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat domain-hunter/mcp.log
+          exit 1
+      - name: Hunt domains
+        run: node domain-hunter/domain-hunter.mjs
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: domain-hunter-report-${{ github.run_number }}
+          path: |
+            domain-hunter/results/
+            domain-hunter/mcp.log
+          retention-days: 30
