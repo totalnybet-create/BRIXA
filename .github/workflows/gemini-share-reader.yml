@@ -1,4 +1,4 @@
-name: Gemini Share Reader
+name: Browser Relay Reader
 
 on:
   push:
@@ -25,14 +25,17 @@ jobs:
           npm init -y
           npm install playwright
           npx playwright install --with-deps chromium
-      - name: Read Gemini share
-        env:
-          TARGET_URL: https://g.co/gemini/share/d654b644704c
+      - name: Read target
+        shell: bash
+        run: |
+          TARGET_URL="$(tr -d '\r\n' < target.txt)"
+          echo "TARGET_URL=$TARGET_URL" >> "$GITHUB_ENV"
+      - name: Read page in Chromium
         run: node scripts/read-gemini.mjs
       - name: Upload result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gemini-share-result
+          name: browser-relay-result
           path: artifacts/
           if-no-files-found: warn
