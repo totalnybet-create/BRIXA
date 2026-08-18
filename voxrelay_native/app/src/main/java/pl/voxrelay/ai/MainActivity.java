@@ -6,6 +6,7 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.speech.RecognitionListener;
@@ -13,7 +14,6 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.view.Gravity;
-import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
@@ -36,7 +36,7 @@ public class MainActivity extends Activity {
     private void buildUi(){
         LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(18),dp(18),dp(18),dp(18)); root.setBackgroundColor(Color.rgb(8,15,28));
         LinearLayout top=new LinearLayout(this); top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title=text("VoxRelay AI",24,FG); title.setTypeface(null,1); top.addView(title,new LinearLayout.LayoutParams(0,dp(52),1));
+        TextView title=text("VoxRelay AI",24,FG); title.setTypeface(null,Typeface.BOLD); top.addView(title,new LinearLayout.LayoutParams(0,dp(52),1));
         Button keys=button("⚙ Klucze",false); keys.setOnClickListener(v->showKeys()); top.addView(keys,new LinearLayout.LayoutParams(dp(110),dp(48))); root.addView(top);
         status=text("AUTO ROUTER • gotowy",13,ACCENT); status.setPadding(0,0,0,dp(12)); root.addView(status);
         ScrollView scroll=new ScrollView(this); log=text("Powiedz coś. Router sam wybierze dostępny model AI i przeczyta odpowiedź głosem.\n",17,FG); log.setLineSpacing(0,1.18f); scroll.addView(log); GradientDrawable p=new GradientDrawable(); p.setColor(PANEL); p.setCornerRadius(dp(22)); scroll.setBackground(p); scroll.setPadding(dp(16),dp(14),dp(16),dp(14)); root.addView(scroll,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1));
