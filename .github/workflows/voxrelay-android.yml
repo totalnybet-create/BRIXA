@@ -20,21 +20,16 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Restore standalone source
-        run: |
-          mkdir -p /tmp/voxrelay
-          base64 -d voxrelay/VoxRelayAI-source-v0.1.b64 > /tmp/voxrelay.zip
-          unzip -q /tmp/voxrelay.zip -d /tmp/voxrelay
       - name: Android lint
-        working-directory: /tmp/voxrelay
+        working-directory: voxrelay_native
         run: gradle lintDebug --stacktrace
       - name: Build APK
-        working-directory: /tmp/voxrelay
+        working-directory: voxrelay_native
         run: gradle assembleDebug --stacktrace
       - name: Verify APK archive
-        run: unzip -t /tmp/voxrelay/app/build/outputs/apk/debug/app-debug.apk
+        run: unzip -t voxrelay_native/app/build/outputs/apk/debug/app-debug.apk
       - name: Upload verified APK
         uses: actions/upload-artifact@v4
         with:
           name: VoxRelay-AI-v0.1
-          path: /tmp/voxrelay/app/build/outputs/apk/debug/app-debug.apk
+          path: voxrelay_native/app/build/outputs/apk/debug/app-debug.apk
