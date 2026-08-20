@@ -1,0 +1,114 @@
+name: Persone full affiliate import
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/persone-full-import.yml'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: persone-full-affiliate-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout worker
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install SAX parser
+        run: npm install --prefix persone-worker
+
+      - name: Create one-time encrypted handoff
+        id: handoff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REQUEST_ID="$(node -e "console.log(require('node:crypto').randomUUID())")"
+          PRIVATE_KEY="$RUNNER_TEMP/admitad-feed-private.pem"
+          PUBLIC_KEY="$RUNNER_TEMP/admitad-feed-public.pem"
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out "$PRIVATE_KEY" 2>/dev/null
+          openssl pkey -in "$PRIVATE_KEY" -pubout -out "$PUBLIC_KEY" 2>/dev/null
+          chmod 600 "$PRIVATE_KEY"
+          REQUEST_BODY="$RUNNER_TEMP/admitad-handoff-request.txt"
+          {
+            printf 'HANDOFF_REQUEST_V1 %s\n' "$REQUEST_ID"
+            cat "$PUBLIC_KEY"
+          } > "$REQUEST_BODY"
+          ISSUE_URL="$(gh issue create --title "persone-feed-handoff $REQUEST_ID" --body-file "$REQUEST_BODY")"
+          ISSUE_NUMBER="${ISSUE_URL##*/}"
+          printf 'request_id=%s\nissue_number=%s\n' "$REQUEST_ID" "$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+          printf 'Created encrypted handoff request #%s\n' "$ISSUE_NUMBER"
+
+      - name: Receive secret and stream complete feed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUEST_ID: ${{ steps.handoff.outputs.request_id }}
+          ISSUE_NUMBER: ${{ steps.handoff.outputs.issue_number }}
+          RESUME_AFTER: '181000'
+          BATCH_SIZE: '1000'
+          PROGRESS_EVERY: '5000'
+          IMPORT_LIMIT: '0'
+        run: |
+          set -euo pipefail
+          COMMENT=''
+          for attempt in $(seq 1 180); do
+            COMMENT="$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/comments" --jq '[.[] | select(.body | startswith("HANDOFF_V1 "))][-1].body // ""')"
+            if [ -n "$COMMENT" ]; then break; fi
+            sleep 10
+          done
+          if [ -z "$COMMENT" ]; then
+            echo 'Encrypted feed handoff timed out.' >&2
+            exit 1
+          fi
+          read -r VERSION COMMENT_REQUEST_ID CIPHERTEXT PROOF <<< "$COMMENT"
+          if [ "$VERSION" != 'HANDOFF_V1' ] || [ "$COMMENT_REQUEST_ID" != "$REQUEST_ID" ]; then
+            echo 'Encrypted feed handoff did not match this run.' >&2
+            exit 1
+          fi
+          printf '%s' "$CIPHERTEXT" | base64 --decode > "$RUNNER_TEMP/admitad-feed.enc"
+          ADMITAD_FEED_URL="$(openssl pkeyutl -decrypt -inkey "$RUNNER_TEMP/admitad-feed-private.pem" -in "$RUNNER_TEMP/admitad-feed.enc" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256)"
+          printf '::add-mask::%s\n' "$ADMITAD_FEED_URL"
+          export ADMITAD_FEED_URL CIPHERTEXT PROOF
+          EXPECTED_PROOF="$(node --input-type=module <<'NODE'
+          import { createHash, createHmac } from 'node:crypto';
+          const key = createHash('sha256').update(process.env.ADMITAD_FEED_URL).digest();
+          process.stdout.write(createHmac('sha256', key).update(`${process.env.REQUEST_ID}.${process.env.CIPHERTEXT}`).digest('hex'));
+          NODE
+          )"
+          if [ "$EXPECTED_PROOF" != "$PROOF" ]; then
+            echo 'Encrypted feed handoff signature is invalid.' >&2
+            exit 1
+          fi
+          node persone-worker/import.js 2>&1 | tee affiliate-import.log
+
+      - name: Save checkpoint and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: persone-import-${{ github.run_id }}
+          path: |
+            .affiliate-import-checkpoint.json
+            affiliate-import.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Close one-time handoff
+        if: always() && steps.handoff.outputs.issue_number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ steps.handoff.outputs.issue_number }}
+        run: gh issue close "$ISSUE_NUMBER" --comment "Handoff closed for workflow run $GITHUB_RUN_ID."
