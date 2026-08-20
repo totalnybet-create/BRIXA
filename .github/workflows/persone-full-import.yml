@@ -6,6 +6,8 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/persone-full-import.yml'
+      - 'persone-worker/import.js'
+      - 'persone-worker/package.json'
 
 permissions:
   contents: read
@@ -28,7 +30,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install SAX parser
+      - name: Install streaming parsers
         run: npm install --prefix persone-worker
 
       - name: Create one-time encrypted handoff
