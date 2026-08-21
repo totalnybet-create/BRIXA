@@ -2,6 +2,12 @@ name: Persone full affiliate import
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/persone-full-import.yml'
+      - 'persone-worker/import.js'
+      - 'persone-worker/package.json'
   push:
     branches: [main]
     paths:
@@ -47,7 +53,7 @@ jobs:
           chmod 600 "$PRIVATE_KEY"
           REQUEST_BODY="$RUNNER_TEMP/admitad-handoff-request.txt"
           {
-            printf 'HANDOFF_REQUEST_V1 %s\n' "$REQUEST_ID"
+            printf 'HANDOFF_REQUEST_V2 %s\n' "$REQUEST_ID"
             cat "$PUBLIC_KEY"
           } > "$REQUEST_BODY"
           ISSUE_URL="$(gh issue create --title "persone-feed-handoff $REQUEST_ID" --body-file "$REQUEST_BODY")"
@@ -68,7 +74,7 @@ jobs:
           set -euo pipefail
           COMMENT=''
           for attempt in $(seq 1 180); do
-            COMMENT="$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/comments" --jq '[.[] | select(.body | startswith("HANDOFF_V1 "))][-1].body // ""')"
+            COMMENT="$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/comments" --jq '[.[] | select(.body | startswith("HANDOFF_V2 "))][-1].body // ""')"
             if [ -n "$COMMENT" ]; then break; fi
             sleep 10
           done
@@ -77,14 +83,21 @@ jobs:
             exit 1
           fi
           read -r VERSION COMMENT_REQUEST_ID CIPHERTEXT PROOF <<< "$COMMENT"
-          if [ "$VERSION" != 'HANDOFF_V1' ] || [ "$COMMENT_REQUEST_ID" != "$REQUEST_ID" ]; then
+          if [ "$VERSION" != 'HANDOFF_V2' ] || [ "$COMMENT_REQUEST_ID" != "$REQUEST_ID" ]; then
             echo 'Encrypted feed handoff did not match this run.' >&2
             exit 1
           fi
           printf '%s' "$CIPHERTEXT" | base64 --decode > "$RUNNER_TEMP/admitad-feed.enc"
-          ADMITAD_FEED_URL="$(openssl pkeyutl -decrypt -inkey "$RUNNER_TEMP/admitad-feed-private.pem" -in "$RUNNER_TEMP/admitad-feed.enc" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256)"
+          PAYLOAD="$(openssl pkeyutl -decrypt -inkey "$RUNNER_TEMP/admitad-feed-private.pem" -in "$RUNNER_TEMP/admitad-feed.enc" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256)"
+          ADMITAD_FEED_URL="${PAYLOAD%%|*}"
+          INGEST_SIGNING_KEY_HEX="${PAYLOAD#*|}"
+          if [ "$ADMITAD_FEED_URL" = "$PAYLOAD" ] || ! [[ "$INGEST_SIGNING_KEY_HEX" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+            echo 'Encrypted handoff payload is invalid.' >&2
+            exit 1
+          fi
           printf '::add-mask::%s\n' "$ADMITAD_FEED_URL"
-          export ADMITAD_FEED_URL CIPHERTEXT PROOF
+          printf '::add-mask::%s\n' "$INGEST_SIGNING_KEY_HEX"
+          export ADMITAD_FEED_URL INGEST_SIGNING_KEY_HEX CIPHERTEXT PROOF
           EXPECTED_PROOF="$(node --input-type=module <<'NODE'
           import { createHash, createHmac } from 'node:crypto';
           const key = createHash('sha256').update(process.env.ADMITAD_FEED_URL).digest();
