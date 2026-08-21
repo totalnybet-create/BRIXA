@@ -1,10 +1,10 @@
-name: Persone feed count
+name: Persone category pack export
 
 on:
   pull_request:
     branches: [main]
     paths:
-      - 'persone-worker/count-feed-v2.js'
+      - 'persone-worker/sort-feed.js'
       - '.github/workflows/persone-feed-count.yml'
   workflow_dispatch:
 
@@ -13,7 +13,7 @@ permissions:
   issues: write
 
 jobs:
-  count:
+  sort:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
@@ -42,10 +42,10 @@ jobs:
             printf 'HANDOFF_REQUEST_COUNT_V1 %s\n' "$REQUEST_ID"
             cat "$PUBLIC_KEY"
           } > "$REQUEST_BODY"
-          ISSUE_URL="$(gh issue create --title "persone-feed-count-handoff $REQUEST_ID" --body-file "$REQUEST_BODY")"
+          ISSUE_URL="$(gh issue create --title "persone-feed-sort-handoff $REQUEST_ID" --body-file "$REQUEST_BODY")"
           ISSUE_NUMBER="${ISSUE_URL##*/}"
           printf 'request_id=%s\nissue_number=%s\n' "$REQUEST_ID" "$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
-      - name: Receive feed and count all offers
+      - name: Receive feed and export category packs
         env:
           GH_TOKEN: ${{ github.token }}
           REQUEST_ID: ${{ steps.handoff.outputs.request_id }}
@@ -65,15 +65,25 @@ jobs:
           ADMITAD_FEED_URL="$(openssl pkeyutl -decrypt -inkey "$RUNNER_TEMP/admitad-feed-private.pem" -in "$RUNNER_TEMP/admitad-feed.enc" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256)"
           printf '::add-mask::%s\n' "$ADMITAD_FEED_URL"
           export ADMITAD_FEED_URL
-          node persone-worker/count-feed-v2.js 2>&1 | tee feed-count.log
-      - name: Save count artifact
+          node persone-worker/sort-feed.js 2>&1 | tee sort-feed.log
+      - name: Save manifest
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: persone-feed-count-${{ github.run_id }}
+          name: persone-category-manifest-${{ github.run_id }}
           path: |
-            feed-count.txt
-            feed-count.log
+            sorted-output/manifest.json
+            sorted-output/categories.csv
+            sort-feed.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Save category packs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: persone-category-packs-${{ github.run_id }}
+          path: sorted-output
+          compression-level: 0
           retention-days: 14
       - name: Close handoff
         if: always()
@@ -81,4 +91,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ steps.handoff.outputs.issue_number }}
         run: |
-          if [ -n "${ISSUE_NUMBER:-}" ]; then gh issue close "$ISSUE_NUMBER" --comment "Count handoff closed for workflow run $GITHUB_RUN_ID." || true; fi
+          if [ -n "${ISSUE_NUMBER:-}" ]; then gh issue close "$ISSUE_NUMBER" --comment "Sort handoff closed for workflow run $GITHUB_RUN_ID." || true; fi
