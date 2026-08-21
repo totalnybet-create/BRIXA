@@ -1,0 +1,84 @@
+name: Persone feed count
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'persone-worker/count-feed-v2.js'
+      - '.github/workflows/persone-feed-count.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  count:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install parser
+        run: npm install --prefix persone-worker
+      - name: Create one-time encrypted handoff
+        id: handoff
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REQUEST_ID="$(node -e "console.log(require('node:crypto').randomUUID())")"
+          PRIVATE_KEY="$RUNNER_TEMP/admitad-feed-private.pem"
+          PUBLIC_KEY="$RUNNER_TEMP/admitad-feed-public.pem"
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out "$PRIVATE_KEY" 2>/dev/null
+          openssl pkey -in "$PRIVATE_KEY" -pubout -out "$PUBLIC_KEY" 2>/dev/null
+          chmod 600 "$PRIVATE_KEY"
+          REQUEST_BODY="$RUNNER_TEMP/admitad-handoff-request.txt"
+          {
+            printf 'HANDOFF_REQUEST_COUNT_V1 %s\n' "$REQUEST_ID"
+            cat "$PUBLIC_KEY"
+          } > "$REQUEST_BODY"
+          ISSUE_URL="$(gh issue create --title "persone-feed-count-handoff $REQUEST_ID" --body-file "$REQUEST_BODY")"
+          ISSUE_NUMBER="${ISSUE_URL##*/}"
+          printf 'request_id=%s\nissue_number=%s\n' "$REQUEST_ID" "$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+      - name: Receive feed and count all offers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUEST_ID: ${{ steps.handoff.outputs.request_id }}
+          ISSUE_NUMBER: ${{ steps.handoff.outputs.issue_number }}
+        run: |
+          set -euo pipefail
+          COMMENT=''
+          for attempt in $(seq 1 180); do
+            COMMENT="$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/comments" --jq '[.[] | select(.body | startswith("HANDOFF_COUNT_V1 "))][-1].body // ""')"
+            if [ -n "$COMMENT" ]; then break; fi
+            sleep 10
+          done
+          if [ -z "$COMMENT" ]; then echo 'Encrypted feed handoff timed out.' >&2; exit 1; fi
+          read -r VERSION COMMENT_REQUEST_ID CIPHERTEXT <<< "$COMMENT"
+          if [ "$VERSION" != 'HANDOFF_COUNT_V1' ] || [ "$COMMENT_REQUEST_ID" != "$REQUEST_ID" ]; then echo 'Encrypted feed handoff mismatch.' >&2; exit 1; fi
+          printf '%s' "$CIPHERTEXT" | base64 --decode > "$RUNNER_TEMP/admitad-feed.enc"
+          ADMITAD_FEED_URL="$(openssl pkeyutl -decrypt -inkey "$RUNNER_TEMP/admitad-feed-private.pem" -in "$RUNNER_TEMP/admitad-feed.enc" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256)"
+          printf '::add-mask::%s\n' "$ADMITAD_FEED_URL"
+          export ADMITAD_FEED_URL
+          node persone-worker/count-feed-v2.js 2>&1 | tee feed-count.log
+      - name: Save count artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: persone-feed-count-${{ github.run_id }}
+          path: |
+            feed-count.txt
+            feed-count.log
+          retention-days: 14
+      - name: Close handoff
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.handoff.outputs.issue_number }}
+        run: |
+          if [ -n "${ISSUE_NUMBER:-}" ]; then gh issue close "$ISSUE_NUMBER" --comment "Count handoff closed for workflow run $GITHUB_RUN_ID." || true; fi
