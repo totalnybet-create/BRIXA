@@ -21,8 +21,10 @@ const SOURCE_NAME = 'AliExpress WW affiliate feed';
 if (!FEED_URL) throw new Error('Brak zmiennej ADMITAD_FEED_URL.');
 if (BATCH_SIZE > 1000) throw new Error('BATCH_SIZE nie może przekraczać 1000.');
 
-const signingKey = createHash('sha256').update(FEED_URL).digest();
-const feedFingerprint = signingKey.toString('hex');
+const feedFingerprint = createHash('sha256').update(FEED_URL).digest('hex');
+const configuredSigningKey = String(process.env.INGEST_SIGNING_KEY_HEX || '').trim();
+if (configuredSigningKey && !/^[0-9a-f]{64}$/i.test(configuredSigningKey)) throw new Error('INGEST_SIGNING_KEY_HEX ma nieprawidłowy format.');
+const signingKey = configuredSigningKey ? Buffer.from(configuredSigningKey, 'hex') : Buffer.from(feedFingerprint, 'hex');
 const categories = new Map();
 const pending = [];
 let resumeAfter = CONFIGURED_RESUME_AFTER;
