@@ -7,12 +7,14 @@ on:
     paths:
       - '.github/workflows/persone-full-import.yml'
       - 'persone-worker/import.js'
+      - 'persone-worker/count-feed-v2.js'
       - 'persone-worker/package.json'
   push:
     branches: [main]
     paths:
       - '.github/workflows/persone-full-import.yml'
       - 'persone-worker/import.js'
+      - 'persone-worker/count-feed-v2.js'
       - 'persone-worker/package.json'
 
 permissions:
@@ -61,15 +63,11 @@ jobs:
           printf 'request_id=%s\nissue_number=%s\n' "$REQUEST_ID" "$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
           printf 'Created encrypted handoff request #%s\n' "$ISSUE_NUMBER"
 
-      - name: Receive secret and stream complete feed
+      - name: Receive secret and count complete feed
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REQUEST_ID: ${{ steps.handoff.outputs.request_id }}
           ISSUE_NUMBER: ${{ steps.handoff.outputs.issue_number }}
-          RESUME_AFTER: '181000'
-          BATCH_SIZE: '1000'
-          PROGRESS_EVERY: '5000'
-          IMPORT_LIMIT: '0'
         run: |
           set -euo pipefail
           COMMENT=''
@@ -108,16 +106,16 @@ jobs:
             echo 'Encrypted feed handoff signature is invalid.' >&2
             exit 1
           fi
-          node persone-worker/import.js 2>&1 | tee affiliate-import.log
+          node persone-worker/count-feed-v2.js 2>&1 | tee feed-count.log
 
-      - name: Save checkpoint and log
+      - name: Save count and log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: persone-import-${{ github.run_id }}
+          name: persone-feed-count-${{ github.run_id }}
           path: |
-            .affiliate-import-checkpoint.json
-            affiliate-import.log
+            feed-count.txt
+            feed-count.log
           if-no-files-found: warn
           retention-days: 14
 
