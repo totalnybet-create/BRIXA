@@ -55,3 +55,4 @@ if (isXml) {
 
 console.log(`TOTAL_OFFERS=${count}`);
 await writeFile('feed-count.txt', `TOTAL_OFFERS=${count}\n`, 'utf8');
+// trigger: validation census
