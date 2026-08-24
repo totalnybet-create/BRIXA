@@ -1,16 +1,27 @@
 FROM node:22-alpine AS builder
 ARG PORTAL_COMMIT=2ddcd09a7693fb4bcf856ba934c6c0836094d763
-RUN apk add --no-cache git
+RUN apk add --no-cache git libc6-compat
 WORKDIR /app
 RUN git clone https://github.com/scriptcasino/free-casino-script-portal.git . \
     && git checkout "$PORTAL_COMMIT" \
     && rm -rf .git
-RUN node -e "const fs=require('fs'); const p='lib/env.ts'; let s=fs.readFileSync(p,'utf8'); const a='NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,'; const b='NEXT_PUBLIC_API_URL: process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL,'; if(!s.includes(a)) throw new Error('API env anchor not found'); fs.writeFileSync(p,s.replace(a,b));"
-ENV NEXT_PUBLIC_REALTIME_ENABLED=false NEXT_PUBLIC_CRASH_REAL_MONEY=false NEXT_TELEMETRY_DISABLED=1 NODE_ENV=production
+ENV NEXT_PUBLIC_SITE_URL=http://localhost:3000 \
+    NEXT_PUBLIC_API_URL=http://127.0.0.1:8080 \
+    NEXT_PUBLIC_TENANT_SLUG=crashx \
+    NEXT_PUBLIC_REALTIME_ENABLED=false \
+    NEXT_PUBLIC_CRASH_REAL_MONEY=false \
+    NEXT_TELEMETRY_DISABLED=1 \
+    NODE_ENV=production
 RUN npm ci && npm run build
+
 FROM node:22-alpine AS runner
 WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0 NEXT_PUBLIC_REALTIME_ENABLED=false NEXT_PUBLIC_CRASH_REAL_MONEY=false
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0 \
+    NEXT_PUBLIC_REALTIME_ENABLED=false \
+    NEXT_PUBLIC_CRASH_REAL_MONEY=false
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
