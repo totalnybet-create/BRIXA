@@ -1,0 +1,101 @@
+name: Build DEAD MAN'S GOLD APK
+
+on:
+  push:
+    branches: [dead-mans-gold-apk-build]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: android-build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android platform
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Enable KVM acceleration
+        working-directory: .
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Build installable APK
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Verify APK signature
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose app/build/outputs/apk/debug/app-debug.apk
+      - name: Runtime smoke test on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb install -r android-build/app/build/outputs/apk/debug/app-debug.apk
+            adb logcat -c
+            adb shell am force-stop com.siedlar.deadmansgold
+            adb shell am start -W -n com.siedlar.deadmansgold/.MainActivity | tee launch-result.txt
+            sleep 8
+            adb logcat -d > dead-mans-gold-logcat.txt
+            adb shell dumpsys activity activities > activity-state-full.txt
+            grep -E 'mResumedActivity|topResumedActivity|com\.siedlar\.deadmansgold' activity-state-full.txt | head -n 80 | tee activity-state.txt || true
+            adb exec-out screencap -p > dead-mans-gold-emulator.png || true
+            PID=$(adb shell pidof com.siedlar.deadmansgold | tr -d '\r' || true)
+            if [ -z "$PID" ]; then
+              echo 'APP_PROCESS_MISSING' | tee runtime-result.txt
+              grep -n -E 'FATAL EXCEPTION|AndroidRuntime|com\.siedlar\.deadmansgold|WebViewFactory|chromium' dead-mans-gold-logcat.txt | tail -n 250 || true
+              exit 1
+            fi
+            if grep -qE 'FATAL EXCEPTION|Process: com\.siedlar\.deadmansgold.*has died' dead-mans-gold-logcat.txt; then
+              echo 'APP_FATAL_EXCEPTION' | tee runtime-result.txt
+              grep -n -E 'FATAL EXCEPTION|AndroidRuntime|com\.siedlar\.deadmansgold' dead-mans-gold-logcat.txt | tail -n 250 || true
+              exit 1
+            fi
+            echo 'RUNTIME_PASS' | tee runtime-result.txt
+            cp android-build/app/build/outputs/apk/debug/app-debug.apk DEAD_MANS_GOLD.apk
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DEAD_MANS_GOLD_RUNTIME_EVIDENCE
+          path: |
+            dead-mans-gold-emulator.png
+            dead-mans-gold-logcat.txt
+            launch-result.txt
+            activity-state.txt
+            activity-state-full.txt
+            runtime-result.txt
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload verified APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DEAD_MANS_GOLD_APK
+          path: DEAD_MANS_GOLD.apk
+          if-no-files-found: error
+          retention-days: 30
