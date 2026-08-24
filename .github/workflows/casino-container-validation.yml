@@ -1,0 +1,14 @@
+name: Casino container validation
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  build:
+    if: github.head_ref == 'casino-ci-validation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Laravel container
+        run: docker build -f casino/deploy/Dockerfile.api.vercel -t casino-api:test casino
+      - name: Build Portal container
+        run: docker build -f casino/deploy/Dockerfile.portal.vercel -t casino-portal:test casino
