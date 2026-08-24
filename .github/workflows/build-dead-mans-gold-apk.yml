@@ -60,25 +60,42 @@ jobs:
             adb shell am force-stop com.siedlar.deadmansgold
             adb shell am start -W -n com.siedlar.deadmansgold/.MainActivity | tee launch-result.txt
             sleep 8
-            PID=$(adb shell pidof com.siedlar.deadmansgold | tr -d '\r')
-            test -n "$PID"
-            adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | tee activity-state.txt
             adb logcat -d > dead-mans-gold-logcat.txt
-            if grep -qE 'FATAL EXCEPTION|Process: com\.siedlar\.deadmansgold.*has died|AndroidRuntime.*com\.siedlar\.deadmansgold' dead-mans-gold-logcat.txt; then
-              tail -n 250 dead-mans-gold-logcat.txt
+            adb shell dumpsys activity activities > activity-state-full.txt
+            grep -E 'mResumedActivity|topResumedActivity|com\.siedlar\.deadmansgold' activity-state-full.txt | head -n 80 | tee activity-state.txt || true
+            adb exec-out screencap -p > dead-mans-gold-emulator.png || true
+            PID=$(adb shell pidof com.siedlar.deadmansgold | tr -d '\r' || true)
+            if [ -z "$PID" ]; then
+              echo 'APP_PROCESS_MISSING' | tee runtime-result.txt
+              grep -n -E 'FATAL EXCEPTION|AndroidRuntime|com\.siedlar\.deadmansgold|WebViewFactory|chromium' dead-mans-gold-logcat.txt | tail -n 250 || true
               exit 1
             fi
-            adb exec-out screencap -p > dead-mans-gold-emulator.png
+            if grep -qE 'FATAL EXCEPTION|Process: com\.siedlar\.deadmansgold.*has died' dead-mans-gold-logcat.txt; then
+              echo 'APP_FATAL_EXCEPTION' | tee runtime-result.txt
+              grep -n -E 'FATAL EXCEPTION|AndroidRuntime|com\.siedlar\.deadmansgold' dead-mans-gold-logcat.txt | tail -n 250 || true
+              exit 1
+            fi
+            echo 'RUNTIME_PASS' | tee runtime-result.txt
             cp android-build/app/build/outputs/apk/debug/app-debug.apk DEAD_MANS_GOLD.apk
-      - name: Upload APK and runtime evidence
+      - name: Upload runtime evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: DEAD_MANS_GOLD_APK
+          name: DEAD_MANS_GOLD_RUNTIME_EVIDENCE
           path: |
-            DEAD_MANS_GOLD.apk
             dead-mans-gold-emulator.png
             dead-mans-gold-logcat.txt
             launch-result.txt
             activity-state.txt
+            activity-state-full.txt
+            runtime-result.txt
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload verified APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DEAD_MANS_GOLD_APK
+          path: DEAD_MANS_GOLD.apk
           if-no-files-found: error
           retention-days: 30
