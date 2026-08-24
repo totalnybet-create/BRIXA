@@ -1,7 +1,8 @@
 FROM php:8.4-cli-alpine
 ARG API_COMMIT=c6d8b87380523e122a45248c95d2ce3a4cf4ae99
-RUN apk add --no-cache git unzip libpq-dev icu-dev oniguruma-dev libzip-dev linux-headers $PHPIZE_DEPS \
-    && docker-php-ext-install pdo_pgsql intl mbstring bcmath opcache pcntl \
+RUN apk add --no-cache git unzip libpq-dev icu-dev oniguruma-dev libzip-dev freetype-dev libjpeg-turbo-dev libpng-dev linux-headers $PHPIZE_DEPS \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo_pgsql intl mbstring bcmath opcache pcntl exif gd \
     && apk del $PHPIZE_DEPS linux-headers
 COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 WORKDIR /app
