@@ -55,22 +55,21 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
-            cd android-build
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb install -r android-build/app/build/outputs/apk/debug/app-debug.apk
             adb logcat -c
             adb shell am force-stop com.siedlar.deadmansgold
-            adb shell am start -W -n com.siedlar.deadmansgold/.MainActivity | tee ../launch-result.txt
+            adb shell am start -W -n com.siedlar.deadmansgold/.MainActivity | tee launch-result.txt
             sleep 8
             PID=$(adb shell pidof com.siedlar.deadmansgold | tr -d '\r')
             test -n "$PID"
-            adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | tee ../activity-state.txt
-            adb logcat -d > ../dead-mans-gold-logcat.txt
-            if grep -qE 'FATAL EXCEPTION|Process: com\.siedlar\.deadmansgold.*has died|AndroidRuntime.*com\.siedlar\.deadmansgold' ../dead-mans-gold-logcat.txt; then
-              tail -n 250 ../dead-mans-gold-logcat.txt
+            adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | tee activity-state.txt
+            adb logcat -d > dead-mans-gold-logcat.txt
+            if grep -qE 'FATAL EXCEPTION|Process: com\.siedlar\.deadmansgold.*has died|AndroidRuntime.*com\.siedlar\.deadmansgold' dead-mans-gold-logcat.txt; then
+              tail -n 250 dead-mans-gold-logcat.txt
               exit 1
             fi
-            adb exec-out screencap -p > ../dead-mans-gold-emulator.png
-            cp app/build/outputs/apk/debug/app-debug.apk ../DEAD_MANS_GOLD.apk
+            adb exec-out screencap -p > dead-mans-gold-emulator.png
+            cp android-build/app/build/outputs/apk/debug/app-debug.apk DEAD_MANS_GOLD.apk
       - name: Upload APK and runtime evidence
         uses: actions/upload-artifact@v4
         with:
