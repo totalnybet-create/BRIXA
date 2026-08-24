@@ -10,9 +10,8 @@ ENV NEXT_PUBLIC_SITE_URL=http://localhost:3000 \
     NEXT_PUBLIC_TENANT_SLUG=crashx \
     NEXT_PUBLIC_REALTIME_ENABLED=false \
     NEXT_PUBLIC_CRASH_REAL_MONEY=false \
-    NEXT_TELEMETRY_DISABLED=1 \
-    NODE_ENV=production
-RUN npm ci && npm run build
+    NEXT_TELEMETRY_DISABLED=1
+RUN npm ci --include=dev && npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
