@@ -1,0 +1,56 @@
+name: One-time casino base import
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/import-casino-now.yml
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: github.event.head_commit.message == 'Run one-time casino import'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: casino-turnkey-base
+          fetch-depth: 0
+
+      - name: Clone upstream MIT casino base
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/casino-api /tmp/casino-portal casino
+          git clone --depth 1 https://github.com/scriptcasino/free-casino-script-api.git /tmp/casino-api
+          git clone --depth 1 https://github.com/scriptcasino/free-casino-script-portal.git /tmp/casino-portal
+          rm -rf /tmp/casino-api/.git /tmp/casino-portal/.git
+          mkdir -p casino/api casino/portal
+          cp -a /tmp/casino-api/. casino/api/
+          cp -a /tmp/casino-portal/. casino/portal/
+          cat > casino/README-IMPORT.md <<'EOF'
+# Turnkey Casino Base
+
+Imported unchanged from MIT upstream repositories:
+- https://github.com/scriptcasino/free-casino-script-api
+- https://github.com/scriptcasino/free-casino-script-portal
+
+`api/`: Laravel API, authentication, wallet, VIP, Filament admin, migrations, Docker/Sail.
+`portal/`: Next.js responsive player portal, profile, wallet UI, i18n.
+
+Real-money gateways are not enabled by this import. Keep payment operations sandboxed/disabled pending licensing and compliance work.
+EOF
+
+      - name: Commit to casino-turnkey-base only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "casino-import-bot"
+          git config user.email "casino-import-bot@users.noreply.github.com"
+          git add casino
+          git commit -m "Import CrashX turnkey casino base"
+          git push origin HEAD:casino-turnkey-base
