@@ -1,0 +1,6 @@
+[submodule "casino/api"]
+	path = casino/api
+	url = https://github.com/scriptcasino/free-casino-script-api.git
+[submodule "casino/portal"]
+	path = casino/portal
+	url = https://github.com/scriptcasino/free-casino-script-portal.git
