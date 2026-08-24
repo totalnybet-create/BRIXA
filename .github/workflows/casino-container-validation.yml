@@ -6,13 +6,11 @@ permissions:
   contents: read
   pull-requests: write
 jobs:
-  build:
+  portal:
     if: github.head_ref == 'casino-ci-validation'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build Laravel container
-        run: docker build -f casino/deploy/Dockerfile.api.vercel -t casino-api:test casino
       - name: Build Portal container
         id: portal
         continue-on-error: true
