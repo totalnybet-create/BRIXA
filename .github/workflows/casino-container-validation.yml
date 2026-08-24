@@ -2,9 +2,6 @@ name: Casino container validation
 on:
   pull_request:
     branches: [main]
-permissions:
-  contents: read
-  pull-requests: write
 jobs:
   portal:
     if: github.head_ref == 'casino-ci-validation'
@@ -12,26 +9,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build Portal container
-        id: portal
-        continue-on-error: true
-        shell: bash
-        run: |
-          set +e
-          docker build --progress=plain -f casino/deploy/Dockerfile.portal.vercel -t casino-portal:test casino 2>&1 | tee /tmp/portal-build.log
-          code=${PIPESTATUS[0]}
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Report Portal build failure
-        if: steps.portal.outputs.exit_code != '0'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          {
-            echo '### Portal Docker build failure'
-            echo '```text'
-            tail -n 180 /tmp/portal-build.log
-            echo '```'
-          } > /tmp/body.md
-          gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/body.md
-          exit 1
+        run: docker build --progress=plain -f casino/deploy/Dockerfile.portal.vercel -t casino-portal:test casino
