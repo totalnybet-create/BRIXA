@@ -1,0 +1,16 @@
+FROM php:8.4-cli-alpine
+ARG API_COMMIT=c6d8b87380523e122a45248c95d2ce3a4cf4ae99
+RUN apk add --no-cache git unzip libpq-dev icu-dev oniguruma-dev libzip-dev linux-headers $PHPIZE_DEPS \
+    && docker-php-ext-install pdo_pgsql intl mbstring bcmath opcache pcntl \
+    && apk del $PHPIZE_DEPS linux-headers
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+WORKDIR /app
+RUN git clone https://github.com/scriptcasino/free-casino-script-api.git . \
+    && git checkout "$API_COMMIT" \
+    && rm -rf .git \
+    && composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-progress
+COPY deploy/start-api.sh /usr/local/bin/start-api
+RUN chmod +x /usr/local/bin/start-api && chown -R www-data:www-data storage bootstrap/cache
+ENV APP_ENV=production APP_DEBUG=false DB_CONNECTION=pgsql SESSION_DRIVER=database CACHE_STORE=database QUEUE_CONNECTION=sync BROADCAST_CONNECTION=log CRASH_BROADCAST_IMMEDIATE=true DEFAULT_TENANT_SLUG=crashx ADMIN_PANEL_PATH=operator-console
+EXPOSE 8080
+CMD ["/usr/local/bin/start-api"]
